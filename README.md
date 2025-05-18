@@ -7,6 +7,11 @@ This utility helps fill up the storage space on your Kindle (or any device) to p
 ## Usage
 
 ### Windows (PowerShell)
+**Tip:** To quickly open a PowerShell window in the correct folder:
+- In File Explorer, navigate to the folder containing `Filler.ps1`.
+- Hold `Shift` and right-click in the folder background, then select **"Open PowerShell window here"** or **"Open command window here"**.
+- Alternatively, click the address bar, type `powershell`, and press Enter.
+
 1. Open PowerShell in the folder containing `Filler.ps1`.
 2. If you get an execution policy error, you can bypass it by running:
    ```powershell
