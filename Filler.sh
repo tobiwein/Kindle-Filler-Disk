@@ -18,7 +18,44 @@ i=0
 
 # Function to get free space in MB on the current filesystem
 get_free_mb() {
-    df -Pm . | awk 'NR==2 {print $4}'
+    df -Pm $dir | awk 'NR==2 {print $4}'
+}
+
+create_file () {
+    local size=$1 path=$2
+
+    # Linux on ext4/xfs/btrfs → *instant* allocation
+    if command -v fallocate >/dev/null 2>&1; then
+        fallocate -l "$size" "$path"  && return
+    fi
+    # macOS
+    if command -v mkfile    >/dev/null 2>&1; then
+        mkfile "$size" "$path"        && return
+    fi
+
+    # Portable but very slow ;(
+    dd if=/dev/zero of="$path" bs="$size" count=1 status=none
+}
+
+PROGRESS=0
+TOTAL_UNITS=100          # keep at 100 if you want a 0‑100 % bar
+
+draw_bar () {
+    local add=$1
+    (( add == 0 )) && return          # ignore no‑progress calls
+
+    PROGRESS=$(( PROGRESS + add ))
+    (( PROGRESS > TOTAL_UNITS )) && PROGRESS=$TOTAL_UNITS   # clamp
+
+    local pct=$(( PROGRESS * 100 / TOTAL_UNITS ))   # integer percent
+    local filled=$(( pct / 2 ))                     # 50‑char bar (2 % each)
+
+    # build the bar without external commands for better compatibility
+    printf -v bar '%*s' "$filled" ''
+    bar=${bar// /#}
+
+    printf '\r[%-50s] %3d%%' "$bar" "$pct"
+    printf '\n'
 }
 
 echo "How much free space (in MB) do you want to leave on disk?"
@@ -44,9 +81,21 @@ case "$choice" in
     *) minFreeMB=20 ;;
 esac
 
+
 echo "Filling disk with files. Please wait..."
+totalFreeMB=$(get_free_mb)
+previousFreeMB=-1
 while true; do
     freeMB=$(get_free_mb)
+    local_progress=0
+
+    if [ "$previousFreeMB" -ge 0 ]; then
+        last_iteration_progress=$(( $previousFreeMB - $freeMB))
+        local_progress=$(( ((last_iteration_progress) * 100 / (totalFreeMB - minFreeMB)) ))
+        draw_bar "$local_progress"
+    fi
+    
+    local_progress=0
     if [ "$freeMB" -ge 1024 ]; then
         fileSize=1G
         fileLabel="1GB"
@@ -65,12 +114,13 @@ while true; do
     fi
 
     filePath="$dir/file_$i"
-    dd if=/dev/zero of="$filePath" bs=$fileSize count=1 status=none
+    create_file "$fileSize" "$filePath"
     if [ ! -f "$filePath" ]; then
         break
+    else
+        previousFreeMB=$freeMB
+        i=$((i+1))
     fi
-    echo "Created file_$i of size $fileLabel. Remaining free space: $freeMB MB"
-    i=$((i+1))
 done
 
 echo "Space exhausted or less than $minFreeMB MB free after creating $i files in $dir."
